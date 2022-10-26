@@ -194,6 +194,7 @@ class NyaaSort:
             if item.endswith(".mkv") and 'video' in guess_type(item, strict=True)[0]:
                 # Fetch the group which did the group, done by finding the first ] in the string
                 nya_format = [']', '[', ' -', '] ']
+                nanDesuKa_format = [' -',' -', ' -','NanDesuKa ']
                 # Check if the file has all characters needed to be a matching of the nyaa format
                 if all(x in item for x in nya_format):
                     try:
@@ -201,6 +202,18 @@ class NyaaSort:
                         subtitle_group = str(item.split(']', 1)[0]).replace('[', '', 1)
                         # fetch the name of the anime by taking everything after the first ] and before the last -
                         anime_name = str(item.split('] ', 1)[1]).rsplit(" -", 1)[0]
+                    except IndexError:
+                        # This will trigger if you create a file name containing all nya_format characters
+                        # But it is not the correct format after all
+                        self.logger.warning(f"Encountered an error while string slicing {item}")
+                        self.weak_error = True
+                        continue
+                elif all(x in item for x in nanDesuKa_format):
+                    try:
+                        # Get the group by getting everything between the first [ and ]
+                        subtitle_group = 'NanDesuKa'
+                        # fetch the name of the anime by taking everything after the first ] and before the last -
+                        anime_name = str(item.split(' -', 1)[0])
                     except IndexError:
                         # This will trigger if you create a file name containing all nya_format characters
                         # But it is not the correct format after all
