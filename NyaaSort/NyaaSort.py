@@ -7,6 +7,7 @@ import argparse
 import logging as log
 import distutils.util as util
 import subprocess
+import re
 from urllib import request, parse
 from sys import platform
 
@@ -186,6 +187,7 @@ class NyaaSort:
         # Update the dictionary of all anime we have existing folders for
         self.get_anime_dict(full_folders_dir)
 
+        nanDesku_new_format = re.compile(r'\.S\d{2}E\d{2}')
         for item in items_in_folder:
             # All the anime I download off Nyaa are MKV files
             # TODO add support for mp4 files
@@ -194,6 +196,10 @@ class NyaaSort:
             if item.endswith(".mkv") and 'video' in guess_type(item, strict=True)[0]:
                 # Fetch the group which did the group, done by finding the first ] in the string
                 nya_format = [']', '[', ' -', '] ']
+                nanDesuKa_format = [' -',' -', ' -','NanDesuKa ']
+                #nanDesku_new_format = re.compile(r'\.S\d{2}E\d{2}')
+                #print(nanDesku_new_format )
+                # re.compile(r'\.S\d{2}E\d{2}')
                 # Check if the file has all characters needed to be a matching of the nyaa format
                 if all(x in item for x in nya_format):
                     try:
@@ -207,6 +213,33 @@ class NyaaSort:
                         self.logger.warning(f"Encountered an error while string slicing {item}")
                         self.weak_error = True
                         continue
+                elif all(x in item for x in nanDesuKa_format):
+                    try:
+                        # Get the group by getting everything between the first [ and ]
+                        subtitle_group = 'NanDesuKa'
+                        # fetch the name of the anime by taking everything after the first ] and before the last -
+                        anime_name = str(item.split(' -', 1)[0])
+                    except IndexError:
+                        # This will trigger if you create a file name containing all nya_format characters
+                        # But it is not the correct format after all
+                        self.logger.warning(f"Encountered an error while string slicing {item}")
+                        self.weak_error = True
+                        continue
+                elif nanDesku_new_format.search(item):
+                    try:
+                        # Get the group by getting everything between the last - and the .mkv extension
+                        subtitle_group = 'NanDesuKa'
+                        match = nanDesku_new_format.search(item)
+                        if match:
+                            anime_name_tmp = item[:match.start()]
+                            anime_name = anime_name_tmp.replace('.', ' ').strip()
+                            print(anime_name)
+                       
+                    except IndexError:
+                        self.logger.warning(f"Encountered an error while string slicing {item}")
+                        self.weak_error = True
+                        continue
+                
                 else:
                     # Executes if there is a MKV file in the directory but its not formatted in the correct way
                     self.logger.warning(f"Skipped {item} for not having the correct string format")
