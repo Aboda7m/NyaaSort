@@ -10,7 +10,8 @@ import subprocess
 import re
 from urllib import request, parse
 from sys import platform
-
+import urllib3
+import requests
 try:
     from bs4 import BeautifulSoup
     from PIL import Image
@@ -20,6 +21,13 @@ except ModuleNotFoundError:
 
 CONFIG_NAME = 'SortConfig.ini'
 
+class AnimeIconMaker:
+    def __init__(self, anime_dict, dir_path, sort_dir, logger):
+        self.anime_dict = anime_dict
+        self.dir_path = dir_path
+        self.sort_dir = sort_dir
+        self.logger = logger
+        self.weak_error = False
 
 class NyaaSort:
 
@@ -496,34 +504,22 @@ class NyaaSort:
                 continue
 
             try:
-                # Fetch the anime image URL
+                # Fetch the anime image URL using Jikan API
                 url_name = parse.quote(anime)
-                search_url = f"https://myanimelist.net/search/all?q={url_name}&cat=all"
-                search_page = self.connect_to(search_url)
-                if not search_page:
-                    self.logger.error(f"Failed to fetch search page for {anime}.")
+                api_url = f"https://api.jikan.moe/v4/anime?q={url_name}"
+                response = requests.get(api_url)
+                if response.status_code != 200:
+                    self.logger.error(f"Failed to fetch data for {anime}.")
                     continue
 
-                soup = BeautifulSoup(search_page, 'html.parser')
-                anime_link = soup.find("a", {"class": "hoverinfo_trigger"})
-                if not anime_link:
-                    self.logger.error(f"No valid link found for {anime}. Skipping.")
+                result = response.json()
+                if result['data']:
+                    anime_data = result['data'][0]
+                    anime_image_url = anime_data['images']['jpg']['image_url']
+                    self.logger.info(f"Image URL for {anime}: {anime_image_url}")
+                else:
+                    self.logger.error(f"No data found for {anime}. Skipping.")
                     continue
-
-                mal_anime_page = self.connect_to(anime_link['href'])
-                if not mal_anime_page:
-                    self.logger.error(f"Failed to fetch MAL page for {anime}. Skipping.")
-                    continue
-
-                anime_soup = BeautifulSoup(mal_anime_page, 'html.parser')
-                anime_image_tag = anime_soup.find("img", {"class": "ac"})
-                anime_image_url = anime_image_tag['data-src'] if anime_image_tag else None
-
-                if not anime_image_url:
-                    self.logger.error(f"No image URL found for {anime}. Skipping.")
-                    continue
-
-                self.logger.info(f"Image URL for {anime}: {anime_image_url}")
 
                 # Save and process the image
                 image_response = requests.get(anime_image_url, stream=True)
