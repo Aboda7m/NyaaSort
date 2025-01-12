@@ -529,10 +529,12 @@ class NyaaSort:
                             img_file.write(chunk)
 
                     # Convert image to .ico
+                    # Convert image to .ico
                     img = Image.open(full_image_path)
-                    img = img.resize((256, 256), Image.ANTIALIAS)
+                    img = img.resize((256, 256), Image.Resampling.LANCZOS)  # Replace ANTIALIAS with LANCZOS
                     ico_path = os.path.join(folder_path, self.anime_dict[anime], f"{anime}.ico")
                     img.save(ico_path, format='ICO')
+
 
                     self.logger.info(f"Icon saved successfully for {anime} at {ico_path}.")
                 else:
