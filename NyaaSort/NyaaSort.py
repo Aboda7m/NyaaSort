@@ -480,74 +480,77 @@ class NyaaSort:
             self.logger.warning("Not all modules needed are imported, aborting")
             return
 
-        self.logger.warning("The script that deals with setting folder icons is iffy at best, improvement is needed")
-        self.logger.warning("Folder icon changes will not be displayed unless you refresh folder view")
-        # TODO make it not so sensitive to edge cases, error testing
-
-        if not os.name == 'nt':
-            self.logger.error("This function will only work on windows")
+        self.logger.warning("Folder icon changes require folder view refresh to display correctly.")
+        if os.name != 'nt':
+            self.logger.error("This function works only on Windows.")
             self.weak_error = True
             return
 
         for anime in self.anime_dict:
-            if self.sort_dir:
-                full_image_path = os.path.join(self.sort_dir, self.anime_dict[anime], f"{anime}.ico")
-            else:
-                full_image_path = os.path.join(self.dir_path, self.anime_dict[anime], f"{anime}.ico")
+            # Determine the folder to save the icon
+            folder_path = self.sort_dir or self.dir_path
+            full_image_path = os.path.join(folder_path, self.anime_dict[anime], f"{anime}.ico")
 
-            if not os.path.exists(full_image_path):
-                # Transfer the anime name to html speak
+            if os.path.exists(full_image_path):
+                self.logger.info(f"Icon already exists for {anime}. Skipping.")
+                continue
+
+            try:
+                # Fetch the anime image URL
                 url_name = parse.quote(anime)
-                url = f"https://myanimelist.net/search/all?q={url_name}&cat=all"
-                search_page = self.connect_to(url)
+                search_url = f"https://myanimelist.net/search/all?q={url_name}&cat=all"
+                search_page = self.connect_to(search_url)
                 if not search_page:
-                    # If something went wrong while trying to connect just ignore this anime
+                    self.logger.error(f"Failed to fetch search page for {anime}.")
                     continue
 
                 soup = BeautifulSoup(search_page, 'html.parser')
-                # We are actually looking for the first item that will pop out when you hover you mouse over it
-                all_anime = soup.findAll("a", {"class": "hoverinfo_trigger"})
-                mal_anime = all_anime[0]['href']
+                anime_link = soup.find("a", {"class": "hoverinfo_trigger"})
+                if not anime_link:
+                    self.logger.error(f"No valid link found for {anime}. Skipping.")
+                    continue
 
-                mal_anime_page = self.connect_to(mal_anime)
+                mal_anime_page = self.connect_to(anime_link['href'])
                 if not mal_anime_page:
-                    # If something went wrong while trying to connect just ignore this anime
+                    self.logger.error(f"Failed to fetch MAL page for {anime}. Skipping.")
                     continue
 
                 anime_soup = BeautifulSoup(mal_anime_page, 'html.parser')
-                # No clue why the image class is ac but its the one we need
-                anime_image_dirty = anime_soup.findAll("img", {"class": "ac"})
-                anime_image = anime_image_dirty[0]['data-src']
-                self.logger.info(f"{anime_image} was found for {anime}")
+                anime_image_tag = anime_soup.find("img", {"class": "ac"})
+                anime_image_url = anime_image_tag['data-src'] if anime_image_tag else None
 
-                # Save the image
-                try:
-                    request.urlretrieve(anime_image, full_image_path)
-                except Exception as e:
-                    self.logger.error(f"{e} went wrong while trying to save image {anime_image}")
+                if not anime_image_url:
+                    self.logger.error(f"No image URL found for {anime}. Skipping.")
                     continue
 
-                # Reformat the image as .ico
-                img = Image.open(full_image_path)
-                img.resize((256, 256), Image.ANTIALIAS)
-                if self.sort_dir:
-                    ico_dir = os.path.join(self.sort_dir, self.anime_dict[anime], f"{anime}.ico")
-                else:
-                    ico_dir = os.path.join(self.dir_path, self.anime_dict[anime], f"{anime}.ico")
-                try:
-                    img.save(ico_dir, format='ICO')
-                except FileNotFoundError:
-                    self.logger.error(f"No directory {ico_dir}")
+                self.logger.info(f"Image URL for {anime}: {anime_image_url}")
 
-                # Here we call the powershell script to set the folder icon
-                if self.sort_dir:
-                    folder = os.path.join(self.sort_dir, self.anime_dict[anime])
+                # Save and process the image
+                image_response = requests.get(anime_image_url, stream=True)
+                if image_response.status_code == 200:
+                    with open(full_image_path, 'wb') as img_file:
+                        for chunk in image_response.iter_content(1024):
+                            img_file.write(chunk)
+
+                    # Convert image to .ico
+                    img = Image.open(full_image_path)
+                    img = img.resize((256, 256), Image.ANTIALIAS)
+                    ico_path = os.path.join(folder_path, self.anime_dict[anime], f"{anime}.ico")
+                    img.save(ico_path, format='ICO')
+
+                    self.logger.info(f"Icon saved successfully for {anime} at {ico_path}.")
                 else:
-                    folder = os.path.join(self.dir_path, self.anime_dict[anime])
+                    self.logger.error(f"Failed to download image for {anime}.")
+
+                # Set the folder icon via PowerShell
+                folder = os.path.join(folder_path, self.anime_dict[anime])
                 ec = subprocess.call(
-                    ['powershell', "-ExecutionPolicy", "Unrestricted", "-File", './set_folder_ico.ps1', f'{folder}',
-                     f'{anime}'])
-                self.logger.info("Powershell returned: {0:d}".format(ec))
+                    ['powershell', "-ExecutionPolicy", "Unrestricted", "-File", './set_folder_ico.ps1', folder, f"{anime}.ico"]
+                )
+                self.logger.info(f"Powershell returned: {ec} for {anime}.")
+
+            except Exception as e:
+                self.logger.error(f"An error occurred while processing {anime}: {e}")
 
     @staticmethod
     def return_ini_location():
